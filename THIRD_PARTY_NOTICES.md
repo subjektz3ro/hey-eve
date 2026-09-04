@@ -13,7 +13,7 @@ their pinned revisions or SHA-256 digests, and store them outside the checkout.
 | Anthropic Python SDK | Remote language-model client | Version in `uv.lock`; [anthropics/anthropic-sdk-python](https://github.com/anthropics/anthropic-sdk-python) | MIT |
 | Kokoro ONNX | Local text-to-speech runtime | Version in `uv.lock`; [thewh1teagle/kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) | MIT |
 | Kokoro-82M model and voice bank | Downloaded speech model data | [model-files-v1.0](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0), SHA-256 values in `eve/doctor.py` | Apache-2.0 |
-| phonemizer-fork | Kokoro phoneme conversion dependency | Version in `uv.lock`; [bootphon/phonemizer](https://github.com/bootphon/phonemizer) | GPL-3.0-or-later |
+| phonemizer | Kokoro phoneme conversion dependency | Version in `uv.lock`; [bootphon/phonemizer](https://github.com/bootphon/phonemizer) | GPL-3.0-or-later |
 | espeakng-loader | Locates the bundled eSpeak NG library and data | Version in `uv.lock`; [thewh1teagle/espeakng-loader](https://github.com/thewh1teagle/espeakng-loader) | MIT |
 | eSpeak NG library and data | Phoneme-generation runtime bundled by espeakng-loader | Bytes pinned by the locked espeakng-loader wheel; [espeak-ng/espeak-ng](https://github.com/espeak-ng/espeak-ng) | GPL-3.0-or-later, with separately licensed files noted upstream |
 | Silero VAD | Downloaded local voice-activity model | Commit `bfdc0193023f121ea5b3cc7b176dbed570a68a59`; [snakers4/silero-vad](https://github.com/snakers4/silero-vad) | MIT |
