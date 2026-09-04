@@ -22,7 +22,10 @@ dependencies = [
     "anthropic>=0.40",
     "kokoro-onnx>=0.4",
     "numpy>=1.26",
-    "onnxruntime>=1.17",
+    # Official 1.29 POSIX wheels enable telemetry by default. Eve disables it
+    # before import, but the new runtime stays gated until the pinned Kokoro
+    # and Silero graphs pass eve doctor on a supported Linux host.
+    "onnxruntime>=1.17,<1.29",
     "pillow>=10",
 ]
 

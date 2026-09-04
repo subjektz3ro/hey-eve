@@ -84,6 +84,14 @@ class TestRendering:
             in rendered
         assert 'Environment="UV_CACHE_DIR=/home/someone/.cache/uv"' in rendered
 
+    def test_onnx_telemetry_is_disabled_at_the_service_boundary(self, rendered):
+        service = _section(rendered, "Service")
+        assert "Environment=ORT_DISABLE_TELEMETRY=1" in service
+        assert "ORT_DISABLE_TELEMETRY" not in next(
+            line for line in service.splitlines()
+            if line.startswith("UnsetEnvironment=")
+        )
+
     def test_only_groups_the_installer_found_are_rendered(self):
         unit = render_service.render(
             TEMPLATE.read_text(), **HOST,

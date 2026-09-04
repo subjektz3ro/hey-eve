@@ -8,6 +8,12 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # 1.29 changed the native POSIX privacy and runtime surface. Keep this
+    # version-specific hold until the pinned graphs pass a supported-host
+    # canary; do not silence updates for any other dependency.
+    ignore:
+      - dependency-name: onnxruntime
+        versions: [">=1.29"]
 
   - package-ecosystem: github-actions
     directory: /
