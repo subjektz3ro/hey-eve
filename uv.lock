@@ -271,7 +271,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "kokoro-onnx", specifier = ">=0.4" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "onnxruntime", specifier = ">=1.17" },
+    { name = "onnxruntime", specifier = ">=1.17,<1.29" },
     { name = "pillow", specifier = ">=10" },
 ]
 

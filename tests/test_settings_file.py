@@ -348,6 +348,21 @@ class TestOnlySettingsAreSettings:
         assert key not in os.environ
         assert key in config.SETTINGS_IGNORED
 
+    def test_onnx_telemetry_cannot_be_reenabled_from_the_settings_file(
+        self, env_file, monkeypatch
+    ):
+        # Package bootstrap owns this policy before config is imported. Keep
+        # ORT_* outside the data-file allowlist so a later loader change cannot
+        # turn a privacy boundary into an operator toggle.
+        key = "ORT_DISABLE_TELEMETRY"
+        monkeypatch.delenv(key, raising=False)
+        config.SETTINGS_IGNORED.clear()
+        env_file(f"{key}=0\n")
+        assert config.load_settings() == []
+        assert key not in os.environ
+        assert key in config.SETTINGS_IGNORED
+        assert not any(key.startswith(prefix) for prefix in config.SETTABLE)
+
     @pytest.mark.parametrize("key", [
         "VOICE_HANG_S", "KOKORO_DIR", "WHISPER_DIR", "EVE_CONFIG_DIR",
         "BARKEEP_URL", "HEY_CLAUDE_CONFIG",

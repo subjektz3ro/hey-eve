@@ -30,6 +30,10 @@ User=%i
 SupplementaryGroups=@SUPPLEMENTARY_GROUPS@
 WorkingDirectory=@WORKING_DIRECTORY@
 Environment=PYTHONUNBUFFERED=1
+# Defense in depth for the package-bootstrap privacy guard. ONNX Runtime reads
+# this before native initialization; it must never inherit an operator value
+# that enables the official POSIX builds' telemetry.
+Environment=ORT_DISABLE_TELEMETRY=1
 # The settings file is parsed as data by eve.config; it is deliberately not
 # sourced by systemd, because that would export the API key to every child.
 Environment="EVE_CONFIG_DIR=@CONFIG_DIRECTORY@"

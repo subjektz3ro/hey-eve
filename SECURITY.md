@@ -38,6 +38,19 @@ Silero voice activity detection, whisper.cpp transcription, Kokoro synthesis,
 audio playback, reminders, memory storage, and face rendering run locally.
 Eve does not expose an inbound network server.
 
+Eve forces `ORT_DISABLE_TELEMETRY=1` at package bootstrap, before either
+Silero or Kokoro can initialize ONNX Runtime. The managed systemd unit repeats
+the setting as defense in depth. This is fixed application policy rather than
+an option in Eve's settings file, so an operator value cannot re-enable it.
+
+[ONNX Runtime 1.29 introduced default-on telemetry in its official native
+POSIX builds](https://github.com/microsoft/onnxruntime/blob/v1.29.0/docs/Privacy.md).
+The project therefore also constrains ONNX Runtime below 1.29 until the pinned
+Kokoro and Silero graphs complete `uv run eve doctor` on a supported 64-bit
+glibc Linux host. CI verifies imports on both supported Python boundaries, but
+does not carry the model files or exercise an `aarch64` host, so a green
+dependency-update run is not that compatibility canary.
+
 ## Local persistence
 
 | Data | Location | Lifetime |
