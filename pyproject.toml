@@ -1,0 +1,205 @@
+[project]
+name = "hey-eve"
+version = "0.1.2"
+description = "An always-listening voice assistant with local speech processing and an animated 480x320 face"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["raspberry-pi", "speech-recognition", "text-to-speech", "voice-assistant"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+]
+dependencies = [
+    "anthropic>=0.40",
+    "kokoro-onnx>=0.4",
+    "numpy>=1.26",
+    "onnxruntime>=1.17",
+    "pillow>=10",
+]
+
+[project.scripts]
+eve = "eve.main:main"
+
+[project.urls]
+Homepage = "https://github.com/subjektz3ro/hey-eve"
+Issues = "https://github.com/subjektz3ro/hey-eve/issues"
+Changelog = "https://github.com/subjektz3ro/hey-eve/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-timeout>=2.3",
+    "pytest-cov>=6",
+    "ruff>=0.14",
+    "mypy>=1.13",
+]
+
+# Static analysis exists here to catch what an always-listening assistant
+# punishes quietly: a display thread that dies at 3am, a tool handler that
+# raises inside a bare except, a rewritten transcript that silently stops
+# matching. The selection is narrow on purpose — every rule below has either
+# caught something real in this repo or guards a property the README claims.
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F", "B", "PLE", "S"]
+ignore = [
+    # assert: internal invariants, and the whole test suite.
+    "S101",
+    # random: blink timing, idle behaviour selection, glitch scheduling, the
+    # chase. Never cryptographic — see eve/idle.py and eve/void.py.
+    "S311",
+    # try/except/pass|continue: deliberate best-effort teardown. The display
+    # thread and the audio players must never take the assistant down with
+    # them, so these are load-bearing rather than lazy.
+    "S110", "S112",
+    # subprocess: fixed argv, no shell (aplay / arecord / whisper.cpp /
+    # vcgencmd). Every call site builds a list, never a string.
+    "S404", "S603", "S607",
+    # urllib.request against config.BARKEEP_URL, which defaults to loopback
+    # and is operator-set. S310 wants a scheme allowlist for a URL the
+    # operator typed into their own 0600 file.
+    "S310",
+    # B008 (call in a default argument) — vad.SileroVAD(model=MODEL) takes a
+    # module-level Path, which is a constant, not a fresh object per call.
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures carry literal fake tokens and keys by design, and bind to
+# 0.0.0.0-style placeholders when standing in for a service. S108: the
+# tests assert that captured speech goes to /dev/shm, so the string has to
+# appear — see the eve/main.py entry below for why it is deliberate.
+"tests/*" = ["S105", "S106", "S107", "S104", "S108"]
+
+# S108 (/dev/shm): not a hardcoded temp path but the privacy design. Captured
+# speech has to be a file because whisper.cpp reads one, and /dev/shm is
+# tmpfs — the recording never touches the NVMe and is gone at reboot. It is
+# still opened through tempfile.TemporaryDirectory, so the directory is
+# 0700 and randomly named; only the *parent* is fixed, which is the point.
+#
+# B023 (closure over a loop variable): the four sites are one closure,
+# `activity`, defined inside the listen loop and consumed by
+# record_until_silence *in the same iteration*. Late binding is therefore
+# the correct semantics, not a bug — `began` is deliberately a list so the
+# closure can append to the current iteration's value, and
+# `follow_up_until` is meant to read whatever the previous turn left. Binding
+# them as default arguments to satisfy the rule would obscure that. Reinstate
+# this rule if `activity` ever outlives its iteration.
+"eve/main.py" = ["S108", "B023"]
+
+# Type checking gates the modules whose contracts other modules depend on:
+# the backend seams (Transcriber, Responder), the wake matcher, the memory
+# store, and the pure timing/geometry helpers. The renderer is not listed — it
+# is a thousand lines of numpy-heavy drawing written against an untyped PIL
+# surface, and adding it means annotating that first. Keep the
+# list explicit so a new module has to opt into the gate deliberately rather
+# than being covered by accident through an import.
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+files = [
+    "eve/__init__.py",
+    "eve/assistant.py",
+    "eve/bar.py",
+    "eve/config.py",
+    "eve/earcon.py",
+    "eve/log.py",
+    "eve/memory.py",
+    "eve/tools.py",
+    "eve/vad.py",
+    "eve/viseme.py",
+    "eve/wake.py",
+    "eve/watch.py",
+    "deploy/render_service.py",
+    "scripts/check_coverage.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The deploy tests spawn real git and bash processes. A wedged one used to
+# park the whole run; SIGALRM fails the offending test and lets the rest
+# continue, with attribution.
+timeout = 60
+timeout_method = "signal"
+
+# Enforced by scripts/check_coverage.py, which explains why this is per-file
+# rather than one repo-wide number. The exceptions below are the debt
+# register: every entry is a file that cannot yet meet the default, recorded
+# at what it actually achieves. Adding to this list is a deliberate act;
+# drifting below your own floor fails the build.
+#
+# The audio path dominates what is left. It is not untested because it is
+# unimportant — it is the part that needs an ALSA device or a 354MB model to
+# exercise honestly, and a mock deep enough to cover it would be testing the
+# mock. Its pure helpers — sentence splitting, stall prediction, throughput,
+# viseme timing — are tested and carry the floors they earn.
+[tool.coverage-floors]
+default = 85.0
+
+[tool.coverage-floors.exceptions]
+# The renderer's argparse main() is exercised end to end by subprocess in
+# tests/test_service_unit.py, which coverage cannot see from this process.
+"deploy/render_service.py" = 60.0
+# Neither renderer is listed any more, and that is the register's best
+# outcome. "The drawing itself needs /dev/fb0" was its headline entry and its
+# weakest reasoning: it needs a *file*, because the device is opened by name,
+# so pointing that name at a tmp_path turns the whole draw path into a
+# fixture. eve/void.py now reaches 93% that way and eve/head.py — the
+# behaviour half, which never needed a panel at all — clears the default
+# outright. An entry for either would only lower a standard they already meet.
+#
+# It was not an academic gap. Two live bugs were sitting inside it: an
+# animation phase that froze after eleven days of uptime, and a readout cache
+# that grew for as long as the process ran.
+# The listen loop needs a microphone. Its pure half — sentence splitting,
+# stall prediction, throughput measurement, the face/flag surface — was always
+# covered; what has now joined it is the turn's error handling, which needs
+# neither a microphone nor a network.
+"eve/main.py" = 40.0
+# Kokoro is a 354MB download, so synth() and voices() stop at the point where
+# the model would be opened.
+"eve/tts.py" = 75.0
+# SileroVAD needs its 2.3MB ONNX graph. What is covered is the part that
+# matters when it is absent: load() returning None so the caller falls back
+# to a loudness threshold rather than going deaf.
+"eve/vad.py" = 60.0
+# eve/tools.py is deliberately NOT listed. get_system_status reads /proc, so
+# its covered lines differ between the Pi and a developer's Mac — it was
+# given an exception at 82.0 on that reasoning, and the gate's own
+# stale-exception check pointed out that it reaches 94.7% on Linux and 86%
+# on macOS. Both clear the default, so the exception was doing nothing except
+# lowering the standard.
+#
+# An interactive tool for playing every voice in the bank. Needs Kokoro and
+# a speaker; there is nothing here a test could assert about.
+"scripts/audition.py" = 0.0
+# This headless maintainer tool turns real renderer output into README GIFs,
+# but has no direct assertions yet. Zero is its measured floor, not a claim
+# that it cannot be tested; recorder/save behavior and scene sequencing remain
+# explicit coverage debt.
+"scripts/make-gifs.py" = 0.0
+# The calibration walk needs /dev/input and a fitted panel. Its solver and
+# atomic settings writer are covered without hardware; the interactive
+# measurement loops remain explicit coverage debt.
+"scripts/touch-probe.py" = 20.0
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling==1.32.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["eve"]

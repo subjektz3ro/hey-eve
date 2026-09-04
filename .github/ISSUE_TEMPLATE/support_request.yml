@@ -1,0 +1,38 @@
+name: Setup or usage help
+description: Ask for help installing, configuring, or operating Eve.
+title: "[Support]: "
+labels:
+  - support
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Support is best-effort. Please read README.md, deploy/README.md, and
+        SUPPORT.md first. Do not include an API key or anything anyone said.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: Where are you stuck?
+      description: Include the command or documented step and the sanitized result.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Linux distribution, CPU architecture, Python version, and relevant hardware.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed credentials, speech content, and personal information.
+          required: true

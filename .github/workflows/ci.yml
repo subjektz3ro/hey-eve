@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The suite is hardware-free on purpose. Eve needs a microphone, an ALSA
+# speaker, a 480x320 SPI panel on /dev/fb0, a whisper.cpp build and 356MB of
+# model weights to actually run. Those sit behind seams so CI can exercise the
+# behavior on either supported end of the Python range without pretending to
+# have observed the physical appliance.
+jobs:
+  # This job deliberately has no package-install step. A broken lockfile or
+  # compromised dependency must not prevent the tracked-tree safety check from
+  # looking for credentials, private data, personal paths, or model artifacts.
+  release-safety:
+    name: release-safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan the release snapshot
+        run: python3 scripts/check_release_hygiene.py
+
+  test:
+    name: test (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Minimum and maximum supported releases. kokoro-onnx currently
+        # excludes Python 3.14, so claiming or testing it would be misleading.
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+
+      - name: Sync dependencies
+        run: uv sync --locked --dev
+
+      # These binary dependencies are lazy-loaded by the application, so the
+      # unit suite alone cannot prove that both supported interpreters have a
+      # usable wheel and dynamic-library combination.
+      - name: Import the local model runtime
+        run: uv run python -c "import kokoro_onnx, onnxruntime"
+
+      - name: Run the suite
+        run: |
+          uv run pytest -q \
+            --cov=eve --cov=scripts --cov=deploy \
+            --cov-report=json:coverage.json --cov-report=term:skip-covered
+        env:
+          # Point the settings directory at a path that cannot exist, so a
+          # test that slipped past conftest's redirect fails loudly instead
+          # of quietly reading a real key on some future runner.
+          EVE_CONFIG_DIR: /nonexistent/eve-config
+
+      # Per-file floors keep a large renderer from hiding a bare wake matcher
+      # behind a comfortable-looking repository-wide average.
+      - name: Coverage floors
+        run: uv run python scripts/check_coverage.py coverage.json
+
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          # mypy checks the minimum-version contract.
+          python-version: "3.11"
+
+      - name: Sync dependencies
+        run: uv sync --locked --dev
+
+      - name: Byte-compile everything
+        run: uv run python -m compileall -q eve scripts deploy tests
+
+      - name: Lint
+        run: uv run ruff check --output-format github .
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Validate deploy and setup shell
+        run: for f in deploy/*.sh scripts/*.sh; do bash -n "$f"; done
+
+  audit:
+    name: audit (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+
+      # Export under each supported boundary interpreter so environment
+      # markers select the same dependency branch a real installation gets.
+      - name: Export the locked dependency set
+        run: >-
+          uv export --locked --python ${{ matrix.python }}
+          --no-dev --no-emit-project
+          --format requirements-txt -o requirements.txt
+
+      - name: Audit it
+        run: >-
+          uvx --python ${{ matrix.python }}
+          --from pip-audit==2.10.1 pip-audit
+          -r requirements.txt --progress-spinner off
+
+  clean-wheel:
+    name: clean-wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          python-version: "3.11"
+
+      # Catches modules omitted from the wheel and imports or entry points that
+      # only work because the checkout happens to be on sys.path.
+      - name: Build and install the wheel in isolation
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/wheel"
+          uv venv "$RUNNER_TEMP/wheel-venv" --python 3.11
+          uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" \
+            "$RUNNER_TEMP"/wheel/*.whl
+
+      - name: The installed package must not be the checkout
+        working-directory: "${{ runner.temp }}"
+        run: |
+          "$RUNNER_TEMP/wheel-venv/bin/python" -c \
+            'import eve; assert "site-packages" in eve.__file__, eve.__file__'
+
+      - name: Smoke the installed entry point
+        working-directory: "${{ runner.temp }}"
+        run: |
+          "$RUNNER_TEMP/wheel-venv/bin/eve" --help
+
+      - name: Her face imports from the installed wheel
+        working-directory: "${{ runner.temp }}"
+        run: |
+          "$RUNNER_TEMP/wheel-venv/bin/python" - <<'PY'
+          from eve import head, void
+          assert hasattr(void, "Face")
+          assert issubclass(void.Face, head.Head)
+          PY
+
+  # Branch protection can require this one stable check name while the matrix
+  # changes over time. It still fails if any constituent job fails or skips.
+  gate:
+    name: CI gate
+    if: always()
+    needs: [release-safety, test, lint, audit, clean-wheel]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every CI job
+        run: |
+          test "${{ needs.release-safety.result }}" = success
+          test "${{ needs.test.result }}" = success
+          test "${{ needs.lint.result }}" = success
+          test "${{ needs.audit.result }}" = success
+          test "${{ needs.clean-wheel.result }}" = success

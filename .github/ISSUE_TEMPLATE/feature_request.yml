@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a focused improvement to Eve.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the need before describing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain what Eve should do and what a user would observe.
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Constraints and tradeoffs
+      description: Consider privacy, latency, offline behavior, hardware requirements, and API cost.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched for an existing request covering this idea.
+          required: true
+        - label: This request does not include credentials, transcripts, recordings, or personal data.
+          required: true

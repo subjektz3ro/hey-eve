@@ -1,0 +1,107 @@
+[Unit]
+Description=eve — always-listening voice assistant
+After=network-online.target sound.target bluetooth.target
+Wants=network-online.target
+
+# These two live in [Unit], not [Service]. They were briefly in [Service],
+# where systemd ignores them with a warning that `systemd-analyze verify`
+# emits but does not fail on — so the unit installed cleanly and the limit
+# simply did not exist. tests/test_service_unit.py now checks the section.
+#
+# systemd's default is five starts in ten seconds, which RestartSec=3 can
+# never reach: five restarts take fifteen. So a permanently broken install —
+# no API key, a corrupt memory file, a missing interpreter — looped forever
+# at a steady three seconds and stayed `active (auto-restart)` rather than
+# going `failed` where something watching could see it. Five in five minutes
+# is reachable, and still lets an ordinary transient crash recover itself.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# The instance name is the account that owns the checkout: `eve@someone`. Runs
+# as that user rather than root because it needs that user's Bluetooth
+# session for the speakers, and root gets a different one.
+User=%i
+# install.sh includes only groups this host actually defines. audio serves
+# ALSA, video the framebuffer, tty the console switch, bluetooth the A2DP
+# link, and input a microphone or USB input node owned by that group. Naming a
+# nonexistent group makes systemd reject an otherwise healthy service.
+SupplementaryGroups=@SUPPLEMENTARY_GROUPS@
+WorkingDirectory=@WORKING_DIRECTORY@
+Environment=PYTHONUNBUFFERED=1
+# The settings file is parsed as data by eve.config; it is deliberately not
+# sourced by systemd, because that would export the API key to every child.
+Environment="EVE_CONFIG_DIR=@CONFIG_DIRECTORY@"
+# Pin uv to this checkout even if the system manager has unrelated uv
+# project controls in its environment.
+Environment="UV_PROJECT=@WORKING_DIRECTORY@"
+Environment="UV_PROJECT_ENVIRONMENT=@VENV_DIRECTORY@"
+Environment="UV_CACHE_DIR=@UV_CACHE_DIRECTORY@"
+UnsetEnvironment=UV_WORKING_DIR UV_CONFIG_FILE UV_ENV_FILE UV_NO_PROJECT
+# install.sh resolves the exact executable it used. `--no-sync` is
+# deliberate: install.sh and ship.sh both finish a locked sync before
+# restarting, so service startup never mutates the environment or races a
+# deploy-time resolver.
+ExecStart=@UV_EXECUTABLE@ run --no-sync python -u -m eve.main
+Restart=always
+RestartSec=3
+# The start limit these work with is in [Unit] above, where systemd wants it.
+
+# A ceiling, because there is no other one. This box has 8GB and no swap
+# pressure to speak of, and eve holds a 310MB ONNX graph plus whatever the
+# renderers cache — so an unbounded leak does not degrade her, it takes the
+# machine down around her. 1500M is roughly four times steady state.
+#
+# OOMPolicy=stop rather than the default `continue`: if the kernel kills the
+# process, treat the unit as failed and let the start limit above apply,
+# instead of restarting into the same wall forever.
+MemoryMax=1500M
+OOMPolicy=stop
+# Native inference and image libraries can crash while the process holds a
+# credential, conversation history, or live audio. None of that should become
+# a persistent core image merely because the failure crossed native code.
+LimitCORE=0
+
+# Under systemd, stdout is a pipe rather than a terminal. eve checks exactly
+# that to decide whether to print transcripts, so the service stays quiet
+# about content without being told — see eve/log.py.
+
+# ---------------------------------------------------------------------------
+# On the sandboxing that is deliberately NOT here
+#
+# An earlier version of this unit carried barkeep's hardening block verbatim:
+# NoNewPrivileges=yes, ProtectSystem=strict, ProtectHome=read-only,
+# PrivateTmp=yes and a ReadWritePaths= list. That was a mistake, and the
+# reason is worth writing down so it is not repeated.
+#
+# barkeep is a web control plane. It serves HTTP, spawns child processes, and
+# touches a handful of directories it fully controls, so a tight sandbox costs
+# it nothing. eve is not that animal. She rasterises into /dev/fb0, switches
+# the console VT, opens ALSA capture and playback, holds a Bluetooth A2DP
+# link, shells out to whisper.cpp, and loads a 325MB ONNX graph through
+# libraries that keep their own caches under $HOME. Every one of those is a
+# way for a sandbox to break her, and most of them break her *later* — in the
+# middle of a reply, not at startup, where it is hardest to attribute.
+#
+# It had already cost one: NoNewPrivileges blocks the `sudo -n chvt` the faces
+# run to move the console off the panel, so every start logged two sudo errors
+# and left a getty's cursor where her face goes. That was the visible failure.
+# The one that mattered more was the untested risk — nothing had verified that
+# Kokoro could still load under ProtectHome=read-only.
+#
+# The structure worth borrowing from busybar-dev is the template, the renderer
+# that fills it in for this host, the contract digest that stops ship.sh
+# restarting under a stale unit, and the installer that validates before it
+# touches anything live. That is all here. Its threat model is not, because it
+# is not this service's threat model.
+#
+# If hardening is wanted later it should be added one directive at a time,
+# each one proven against a real spoken turn on real hardware. Where the
+# privacy claims actually live is documented in SECURITY.md; note that
+# PrivateTmp was the only directive buying anything the code does not already
+# buy for itself, and it bought it at the cost of everything above.
+# ---------------------------------------------------------------------------
+
+[Install]
+WantedBy=multi-user.target

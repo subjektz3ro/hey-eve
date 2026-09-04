@@ -1,0 +1,19 @@
+[Unit]
+Description=eve — keep the Bluetooth speaker connected
+# A timer rather than a one-shot at boot. Two cases need the difference: the
+# speaker is switched off when the Pi boots and switched on later, and a link
+# that drops mid-afternoon. A boot-only connect leaves both of those silent
+# until the next reboot, which is the failure this whole unit exists to end.
+
+[Timer]
+# Early enough that eve's first turn finds a speaker, late enough that
+# bluealsa has registered its endpoints.
+OnBootSec=15s
+OnUnitActiveSec=60s
+# The script exits 0 and says nothing when the link is already up, so this is
+# a no-op in the common case.
+AccuracySec=5s
+Unit=eve-speaker@%i.service
+
+[Install]
+WantedBy=timers.target

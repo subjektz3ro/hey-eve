@@ -1,0 +1,74 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.tox/
+.nox/
+.hypothesis/
+.cache/
+node_modules/
+
+# Tooling caches and coverage artifacts. coverage.json is CI's input to
+# scripts/check_coverage.py and is regenerated on every run.
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+coverage.json
+coverage.xml
+coverage.sqlite
+htmlcov/
+build/
+dist/
+*.egg-info/
+.DS_Store
+Thumbs.db
+
+# Model weights: 354MB of Kokoro plus Silero. Fetched by
+# scripts/fetch-models.sh into ~/.local/share/eve/, never committed.
+models/
+*.onnx
+*.bin
+
+# Audio. Captured speech lives in /dev/shm and never reaches here, but an
+# audition or a debugging session can drop a file in the checkout.
+*.wav
+*.aiff
+*.aac
+*.flac
+*.m4a
+*.mp3
+*.ogg
+*.opus
+
+# Nothing here should ever hold a credential, but make it hard to slip.
+# The real settings file is ~/.config/eve/env (0600); `env.example`
+# documents its keys and is tracked deliberately.
+/.env
+/env
+/.env.*
+/env.*
+!/env.example
+
+# Other private state and common copies of it. The release scanner rejects
+# these even when force-added; ignores make the ordinary mistake harder.
+memory.json
+memory.json.*
+reminders.json
+reminders.json.*
+/heard.*
+*.bak
+*.db
+*.key
+*.log
+*.orig
+*.p12
+*.pem
+*.pfx
+*.sqlite
+*.sqlite3
+*.swp
+
+# uv.lock is NOT ignored. It used to be, which meant CI, this laptop and the
+# Pi each resolved their own dependency set and "works here" proved nothing.
+# `uv sync --locked` is the whole point of committing it.

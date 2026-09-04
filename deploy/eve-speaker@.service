@@ -1,0 +1,22 @@
+[Unit]
+Description=eve — connect the Bluetooth speaker
+# bluealsa owns the A2DP endpoints that /etc/asound.conf points `default` at,
+# so connecting before it is running produces a link with nowhere to go.
+After=bluetooth.service bluealsa.service
+Wants=bluetooth.service
+
+[Service]
+Type=oneshot
+# Same instance-is-the-account convention as eve@.service, and for the same
+# reason: the Bluetooth session that owns an A2DP speaker belongs to that
+# user, and root gets a different one.
+User=%i
+Environment="EVE_CONFIG_DIR=@CONFIG_DIRECTORY@"
+# connect-speaker.sh parses the shared data file one line at a time. Even
+# though it keeps only the Bluetooth address, a shell core could capture a
+# credential line while it is being read.
+LimitCORE=0
+ExecStart=@WORKING_DIRECTORY@/deploy/connect-speaker.sh
+
+[Install]
+WantedBy=multi-user.target
